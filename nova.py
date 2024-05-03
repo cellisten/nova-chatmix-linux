@@ -43,9 +43,8 @@ class NovaProWireless:
     # PipeWire Names
     ## Name of digital sink.
     ## PipeWire docs recommend the analog sink, but I've had better results with the digital one. Probably not actually, but whatever.
-    PW_ORIGINAL_SINK = (
-        "alsa_output.usb-SteelSeries_Arctis_Nova_Pro_Wireless-00.7.iec958-stereo"
-    )
+    PW_ORIGINAL_SINK = "alsa_output.usb-SteelSeries_Arctis_Nova_Pro_Wireless-00.iec958-stereo"
+
     ## Names of virtual sound devices
     PW_GAME_SINK = "NovaGame"
     PW_CHAT_SINK = "NovaChat"
@@ -92,14 +91,22 @@ class NovaProWireless:
     # Create virtual pipewire loopback sinks, and redirect them to the real headset sink
     def _enable_virtual_sinks(self):
         cmd = [
-            "pw-loopback",
-            "-P",
-            self.PW_ORIGINAL_SINK,
-            "--capture-props=media.class=Audio/Sink",
-            "-n",
+            "pactl",
+            "load-module",
+            "module-null-sink"
         ]
-        subprocess.Popen(cmd + [self.PW_GAME_SINK])
-        subprocess.Popen(cmd + [self.PW_CHAT_SINK])
+        sinks = str(subprocess.check_output(["pactl", "list", "sinks"]))
+
+        if f"Name: {self.PW_GAME_SINK}" not in sinks:
+            subprocess.run(cmd + [f"sink_name={self.PW_GAME_SINK}", f"sink_properties=device.description={self.PW_GAME_SINK}"])
+            subprocess.run(["pactl", "load-module", "module-loopback", f"source={self.PW_GAME_SINK}.monitor", f"sink={self.PW_ORIGINAL_SINK}"])
+        else:
+            print(f"{self.PW_GAME_SINK} sink already exists")
+        if f"Name: {self.PW_CHAT_SINK}" not in sinks:
+            subprocess.run(cmd + [f"sink_name={self.PW_CHAT_SINK}", f"sink_properties=device.description={self.PW_CHAT_SINK}"])
+            subprocess.run(["pactl", "load-module", "module-loopback", f"source={self.PW_CHAT_SINK}.monitor", f"sink={self.PW_ORIGINAL_SINK}"])
+        else:
+            print(f"{self.PW_CHAT_SINK} sink already exists")
 
     # ChatMix implementation
     # Continuously read from base station and ignore everything but ChatMix messages (OPT_CHATMIX)
@@ -120,8 +127,8 @@ class NovaProWireless:
                 cmd = ["pactl", "set-sink-volume"]
 
                 # Actually change volume. Everytime you turn the dial, both volumes are set to the correct level
-                subprocess.Popen(cmd + [f"input.{self.PW_GAME_SINK}", f"{gamevol}%"])
-                subprocess.Popen(cmd + [f"input.{self.PW_CHAT_SINK}", f"{chatvol}%"])
+                subprocess.Popen(cmd + [self.PW_GAME_SINK, f"{gamevol}%"])
+                subprocess.Popen(cmd + [self.PW_CHAT_SINK, f"{chatvol}%"])
             # Ignore timeout.
             except USBTimeoutError:
                 continue
