@@ -3,8 +3,9 @@
 # Licensed under the EUPL
 
 import subprocess
+import time
 
-from usb.core import find, USBTimeoutError
+from usb.core import find, USBTimeoutError, USBError
 
 
 class NovaProWireless:
@@ -51,11 +52,17 @@ class NovaProWireless:
 
     # Selects correct device, and makes sure we can control it
     def __init__(self):
-        self.dev = find(idVendor=self.VID, idProduct=self.PID)
-        if self.dev is None:
-            raise ValueError("Device not found")
+        while True:
+            self.dev = find(idVendor=self.VID, idProduct=self.PID)
+            if self.dev is None:
+                print("Device not found, retrying in 1s")
+                time.sleep(1)
+            else:
+                break
         if self.dev.is_kernel_driver_active(self.INTERFACE):
             self.dev.detach_kernel_driver(self.INTERFACE)
+        self.enable_sonar_icon()
+        self.enable_chatmix()
 
     # Takes a tuple of ints and turns it into bytes with the correct length padded with zeroes
     def _create_msgdata(self, data: tuple[int]) -> bytes:
@@ -63,6 +70,7 @@ class NovaProWireless:
 
     # Enables chatmix
     def enable_chatmix(self):
+        print("Turning on chatmix function")
         self.dev.write(
             self.ENDPOINT_TX,
             self._create_msgdata((self.TX, self.OPT_CHATMIX_ENABLE, 1)),
@@ -70,6 +78,7 @@ class NovaProWireless:
 
     # Enables Sonar Icon
     def enable_sonar_icon(self):
+        print("Turning on sonar icon")
         self.dev.write(
             self.ENDPOINT_TX, self._create_msgdata((self.TX, self.OPT_SONAR_ICON, 1))
         )
@@ -112,6 +121,7 @@ class NovaProWireless:
     # Continuously read from base station and ignore everything but ChatMix messages (OPT_CHATMIX)
     # The .read method times out and returns an error. This error is catched and basically ignored. Timeout can be configured, but not turned off (I think).
     def chatmix(self):
+        print("Starting chatmix")
         self._enable_virtual_sinks()
         while True:
             try:
@@ -132,6 +142,10 @@ class NovaProWireless:
             # Ignore timeout.
             except USBTimeoutError:
                 continue
+            # Handle disconnection of device
+            except USBError:
+                time.sleep(1)
+                self.__init__()
 
     # Prints output from base station. `debug` argument enables raw output.
     def print_output(self, debug: bool = False):
@@ -158,6 +172,4 @@ class NovaProWireless:
 # When run directly, just start the ChatMix implementation. (And activate the icon, just for fun)
 if __name__ == "__main__":
     nova = NovaProWireless()
-    nova.enable_sonar_icon()
-    nova.enable_chatmix()
     nova.chatmix()

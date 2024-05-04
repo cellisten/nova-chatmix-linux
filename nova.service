@@ -1,0 +1,6 @@
+[Unit]
+Description=Nova chatmix handler
+After=syslog.target
+
+[Service]
+ExecStart=%h/repo/nova-chatmix-linux/nova.py
